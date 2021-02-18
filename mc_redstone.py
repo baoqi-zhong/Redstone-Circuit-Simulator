@@ -1,6 +1,7 @@
 from pyglet.gl import *
 import math
 import numpy as np
+import time
 
 # blocks:(block_id)
 EMPTY = 0
@@ -27,6 +28,7 @@ class Window(pyglet.window.Window):
         self.draw_block_bg()
         self.draw_blocks()
         self.draw_text()
+        #self.debug()
 
     def on_mouse_press(self, x, y, button, modifiers):
         if 88<x<928 and 0<y<560:
@@ -45,8 +47,8 @@ class Window(pyglet.window.Window):
 
     def on_mouse_drag(self, x, y, dx, dy, buttons, modifiers):
         if 88<x<928 and 0<y<560:
-            x_ = (x-89)//28
-            y_ = y//28
+            x_ = min((x - 89) // 28, 29)
+            y_ = min(y // 28, 19)
             if self.mouse_press == 1:
                 self.add_block(x_, y_, self.now_block)
             elif self.mouse_press == 2:
@@ -60,7 +62,6 @@ class Window(pyglet.window.Window):
     # ------------------------------------------------------
     def test_block(self, x, y, layer, block_ids):
         # 检测某位置的方块 防止数组越界
-        print(self.world_block[layer][y][x])
         if 0<=x<30 and 0<=y<20 and self.world_block[layer][y][x] in block_ids:
             return 1
         else:
@@ -90,35 +91,49 @@ class Window(pyglet.window.Window):
         update_redstone_shape(x, y - 1)
         update_redstone_shape(x, y + 1)
 
-    def update_redstone_energy(self, x, y):
-        # surrounding包括周围的红石充能
-        surrounding = []
-        surrounding.append(self.test_block(x, y + 1, self.layer, [2, 3]) * self.world_data[self.layer][y + 1][x][4])
-        surrounding.append(self.test_block(x + 1, y, self.layer, [2, 3]) * self.world_data[self.layer][y][x + 1][4])
-        surrounding.append(self.test_block(x, y - 1, self.layer, [2, 3]) * self.world_data[self.layer][y - 1][x][4])
-        surrounding.append(self.test_block(x - 1, y, self.layer, [2, 3]) * self.world_data[self.layer][y][x - 1][4])
+    def update_redstone_energy(self):
+        flag = False
+        for y in range(20):
+            for x in range(30):
+                if self.world_block[self.layer][y][x] == 2:
+                    surrounding = []
 
-        self.world_data[self.layer][y][x][4] = max(max(surrounding)-1, self.world_data[self.layer][y][x][4])  # 防止自己比别人大还被拉低了
+                    surrounding.append(self.test_block(x, y + 1, self.layer, [2, 3]) * self.world_data[self.layer][y + 1][x][4])
+                    surrounding.append(self.test_block(x + 1, y, self.layer, [2, 3]) * self.world_data[self.layer][y][x + 1][4])
+                    surrounding.append(self.test_block(x, y - 1, self.layer, [2, 3]) * self.world_data[self.layer][y - 1][x][4])
+                    surrounding.append(self.test_block(x - 1, y, self.layer, [2, 3]) * self.world_data[self.layer][y][x - 1][4])
+
+                    if self.world_data[self.layer][y][x][4] != max(max(surrounding)-1,0):
+                        self.world_data[self.layer][y][x][4] = max(max(surrounding)-1,0)
+                        flag = True
+        if flag:
+            self.update_redstone_energy()
+
 
     def add_block(self, x, y, block_id):
         self.world_block[self.layer][y][x] = block_id
-        self.world_data[self.layer][y][x] = [0,0,0,0,0]
+        self.world_data[self.layer][y][x] = [0, 0, 0, 0, 0]
+        if block_id ==3:
+            self.world_data[self.layer][y][x][4] = 16
 
         if block_id == 2 or block_id == 3:  # 红石
             self.update_redstone_shape_around(x, y)
 
 
+
     def delete_block(self, x, y):
-        block_id = self.world_block[self.layer][y][x]
+        block_id = self.world_block[self.layer][y][x]+0
 
         self.world_block[self.layer][y][x] = EMPTY
-        if block_id == 2:  # 红石
+        self.world_data[self.layer][y][x][4] = 0
+        if block_id == 2 or block_id == 3:  # 红石
             self.update_redstone_shape_around(x, y)
 
     def update(self, dt):
         # update是在init里面定义的 不是重写的
-        pass
-
+        stime = time.time()
+        self.update_redstone_energy()
+        print(time.time()-stime)
 
     def draw_bg(self):
         glColor3f(0.93, 0.93, 0.93)
@@ -250,6 +265,11 @@ class Window(pyglet.window.Window):
         self.text.draw()
 
 
+    def debug(self):
+        [pyglet.text.Label(str(self.world_data[self.layer][y][x][4]), font_size=15, x=x * 28 + 91, y=y* 28 + 1, width=28, color=(0,0,0,255)).draw() for x in range(30) for y in range(20)]
+
+
+
 
 
 window = Window(width=1000, height=600, caption='Pyglet', resizable=False)
@@ -259,5 +279,4 @@ pyglet.app.run()
 
 # 世界的数据分为两类：self.world_block  self.world_data
 #                用于储存是哪个方块   用于储存方块对应数据
-# 存在的bug:红石线遇到火把不拐弯  # 已经修复
 
