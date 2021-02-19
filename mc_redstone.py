@@ -20,11 +20,13 @@ class Window(pyglet.window.Window):
         self.layer = 0
         self.mouse_press = 0  #0没有 1左键 2右键
         self.now_block = BLOCK
+        self.next_tick_set = []  # 坐标+插在的方块的充能状态
 
-        self.last_focus = [0,0]
+        self.last_focus = [0, 0]
 
 
-        pyglet.clock.schedule_interval(self.update, 1.0 / 60)  # 每秒刷新60次
+
+        pyglet.clock.schedule_interval(self.update, 1.0 / 10)  # 每秒刷新60次
 
     def on_draw(self):
         self.clear()
@@ -76,7 +78,7 @@ class Window(pyglet.window.Window):
 
     def update_redstone_shape_around(self, x, y):
         def update_redstone_shape(x, y):
-            if self.world_block[self.layer][y][x] == 2:
+            if self.world_block[self.layer][y][x] == REDSTONE:
                 block_data = self.world_data[self.layer][y][x]
 
                 block_data[0] = self.test_block(x, y + 1, self.layer, [2, 3])
@@ -94,26 +96,33 @@ class Window(pyglet.window.Window):
 
         update_redstone_shape(x, y)
         # 防止越界
-        if x - 1 > 0:
-            update_redstone_shape(x - 1, y)
-        if x + 1 < 30:
-            update_redstone_shape(x + 1, y)
-        if y - 1 > 0:
-            update_redstone_shape(x, y - 1)
         if y + 1 < 20:
             update_redstone_shape(x, y + 1)
+        if x + 1 < 30:
+            update_redstone_shape(x + 1, y)
+        if y - 1 >= 0:
+            update_redstone_shape(x, y - 1)
+        if x - 1 >= 0:
+            update_redstone_shape(x - 1, y)
+
+
+
 
     def update_redstone_energy(self):
         flag = False
         for y in range(20):
             for x in range(30):
-                if self.world_block[self.layer][y][x] == 2:
+                if self.world_block[self.layer][y][x] == REDSTONE:
                     surrounding = []
 
-                    surrounding.append(self.test_block(x, y + 1, self.layer, [2, 3]) * self.world_data[self.layer][y + 1][x][4])
-                    surrounding.append(self.test_block(x + 1, y, self.layer, [2, 3]) * self.world_data[self.layer][y][x + 1][4])
-                    surrounding.append(self.test_block(x, y - 1, self.layer, [2, 3]) * self.world_data[self.layer][y - 1][x][4])
-                    surrounding.append(self.test_block(x - 1, y, self.layer, [2, 3]) * self.world_data[self.layer][y][x - 1][4])
+                    if y + 1 < 20:
+                        surrounding.append(self.test_block(x, y + 1, self.layer, [2, 3]) * self.world_data[self.layer][y + 1][x][4])
+                    if x + 1 < 30:
+                        surrounding.append(self.test_block(x + 1, y, self.layer, [2, 3]) * self.world_data[self.layer][y][x + 1][4])
+                    if y - 1 >= 0:
+                        surrounding.append(self.test_block(x, y - 1, self.layer, [2, 3]) * self.world_data[self.layer][y - 1][x][4])
+                    if x - 1 >= 0:
+                        surrounding.append(self.test_block(x - 1, y, self.layer, [2, 3]) * self.world_data[self.layer][y][x - 1][4])
 
                     if self.world_data[self.layer][y][x][4] != max(max(surrounding)-1, 0):
                         self.world_data[self.layer][y][x][4] = max(max(surrounding)-1, 0)
@@ -135,6 +144,54 @@ class Window(pyglet.window.Window):
                 self.world_data[self.layer][y][x - 1][:4].index(1) == 1:
             self.delete_block(x - 1, y)
 
+    def update_torch_energy(self):
+        for data in self.next_tick_set:
+            if self.world_block[self.layer][data[1]][data[0]] == TORCH:
+                if data[2] == 1:
+                    self.world_data[self.layer][data[1]][data[0]][4] = 0
+                else:
+                    self.world_data[self.layer][data[1]][data[0]][4] = 16
+
+        self.next_tick_set = []
+        for y in range(20):
+            for x in range(30):
+                # 如果自己是火把并且不是插在地上
+                if self.world_block[self.layer][y][x] == TORCH and sum(self.world_data[self.layer][y][x][:4]) > 0:
+                    # 如果火把指向上
+                    if self.world_data[self.layer][y][x][0]:
+                        self.next_tick_set.append([x, y, self.world_data[self.layer][y + 1][x][4]])
+                        
+                    if self.world_data[self.layer][y][x][1]:
+                        self.next_tick_set.append([x, y, self.world_data[self.layer][y][x + 1][4]])
+                        
+                    if self.world_data[self.layer][y][x][2]:
+                        self.next_tick_set.append([x, y, self.world_data[self.layer][y - 1][x][4]])
+                        
+                    if self.world_data[self.layer][y][x][3]:
+                        self.next_tick_set.append([x, y, self.world_data[self.layer][y][x - 1][4]])
+
+    def update_block_energy(self):
+        # 待会强充能要改红石那里的代码，
+        for y in range(20):
+            for x in range(30):
+                if self.world_block[self.layer][y][x] == BLOCK:
+                    # 如果四周有红石，且方向正确且有充能
+                    # 红石对方块弱充能1 中继器可以强充能16
+                    if self.test_block(x, y + 1, self.layer, [REDSTONE]) and self.world_data[self.layer][y + 1][x][:4] == [1, 0, 1, 0] and \
+                            self.world_data[self.layer][y + 1][x][4] > 0:
+                        self.world_data[self.layer][y][x][4] = 1
+                    elif self.test_block(x + 1, y, self.layer, [REDSTONE]) and self.world_data[self.layer][y][x + 1][:4] == [0, 1, 0, 1] and \
+                            self.world_data[self.layer][y][x + 1][4] > 0:
+                        self.world_data[self.layer][y][x][4] = 1
+                    elif self.test_block(x, y - 1, self.layer, [REDSTONE]) and self.world_data[self.layer][y - 1][x][:4] == [1, 0, 1, 0] and \
+                            self.world_data[self.layer][y - 1][x][4] > 0:
+                        self.world_data[self.layer][y][x][4] = 1
+                    elif self.test_block(x - 1, y, self.layer, [REDSTONE]) and self.world_data[self.layer][y][x - 1][:4] == [0, 1, 0, 1] and \
+                            self.world_data[self.layer][y][x - 1][4] > 0:
+                        self.world_data[self.layer][y][x][4] = 1
+                    else:
+                        self.world_data[self.layer][y][x][4] = 0
+
     def add_block(self, x, y, block_id):
         def find_torch_ok_list(x, y):
             ok_list = []
@@ -152,7 +209,7 @@ class Window(pyglet.window.Window):
         if block_id != 1:
             update_torch_flag = True
 
-        if block_id == 3:  # torch
+        if block_id == TORCH:
             if self.world_block[self.layer][y][x] == block_id:
                 ok_list = find_torch_ok_list(x, y)
                 if ok_list:
@@ -160,7 +217,7 @@ class Window(pyglet.window.Window):
                         self.world_data[self.layer][y][x][ok_list[0]] = 1
 
                     else:
-                        print(self.world_data[self.layer][y][x])
+
                         this = ok_list.index(self.world_data[self.layer][y][x].index(1))  # 当前状态对应ok_list中的第几个
                         self.world_data[self.layer][y][x][ok_list[this]] = 0
                         if this+1 < len(ok_list):
@@ -180,9 +237,9 @@ class Window(pyglet.window.Window):
 
     def delete_block(self, x, y):
         update_redstone_shape_flag = False
-        if self.world_block[self.layer][y][x] in [2, 3, 4]:
+        if self.world_block[self.layer][y][x] in [REDSTONE, TORCH]:
             update_redstone_shape_flag = True
-        if self.world_block[self.layer][y][x] == 1:
+        if self.world_block[self.layer][y][x] == BLOCK:
             self.update_torch_around(x, y)
 
         self.world_block[self.layer][y][x] = EMPTY
@@ -194,7 +251,16 @@ class Window(pyglet.window.Window):
 
     def update(self, dt):
         # update是在init里面定义的 不是重写的
+        #self.update_redstone_energy()
+
+        self.update_block_energy()
+        self.update_torch_energy()
         self.update_redstone_energy()
+        self.update_block_energy()
+        self.update_torch_energy()
+        self.update_redstone_energy()
+
+
 
     def draw_bg(self):
         glColor3f(0.93, 0.93, 0.93)
@@ -254,13 +320,13 @@ class Window(pyglet.window.Window):
                 glVertex2f(x, y + 9)
                 glEnd()
 
-        def draw_redstone(x, y, data):
+        def draw_redstone(x, y):
             # x,y 指的是位置，（最大30x20） 程序不能直接加
-            energy = self.world_data[self.layer][y][x][4]
-            if energy == 0:
+            data = self.world_data[self.layer][y][x]
+            if data[4] == 0:
                 glColor3f(0.5, 0, 0)
             else:
-                glColor3f(0.8+0.2*energy/15, 0, 0)
+                glColor3f(0.8+0.2*data[4]/15, 0, 0)
 
             # 算出 x,y（指的是起始点（整个24x24左上角xy坐标），是除去边框的坐标）
             # 坐标起点在左下角!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -279,23 +345,24 @@ class Window(pyglet.window.Window):
                 if data[place]:
                     draw_rectengle(x, y, place)
 
-        def draw_torch(x, y, data):
+        def draw_torch(x, y):
             # xy指的是编号，不是坐标。
-            # data 是数字
-            x = x*28+91
-            y = y*28+1
+            data = self.world_data[self.layer][y][x]
 
             def draw_point():
+                if self.world_data[self.layer][y][x][4] == 16:
+                    glColor3f(1, 0, 0)
+                else:
+                    glColor3f(0.5, 0, 0)
                 glBegin(GL_POLYGON)
-                glColor3f(1, 0, 0)
                 for i in range(10):
-                    glVertex2f(x + 12 + 6 * math.cos(2 * 3.14 / 10 * i), y + 12  + 6 * math.sin(2 * 3.14 / 10 * i))
+                    glVertex2f(x*28+91 + 12 + 6 * math.cos(2 * 3.14 / 10 * i), y*28+1 + 12 + 6 * math.sin(2 * 3.14 / 10 * i))
                 glEnd()
 
             glColor3f(0.3, 0.2, 0.1)
             for place in range(4):
                 if data[place]:
-                    draw_rectengle(x, y, place)
+                    draw_rectengle(x*28+91, y*28+1, place)
 
             draw_point()  # 最后画火把点 否则挡住
 
@@ -311,9 +378,9 @@ class Window(pyglet.window.Window):
         glEnd()
 
         if block_id == 2:
-            draw_redstone(x, y, self.world_data[self.layer][y][x])
+            draw_redstone(x, y)
         elif block_id == 3:
-            draw_torch(x, y, self.world_data[self.layer][y][x])
+            draw_torch(x, y)
 
     def draw_blocks(self):
         for y in range(20):
@@ -327,7 +394,7 @@ class Window(pyglet.window.Window):
         self.text.draw()
 
     def debug(self):
-        [pyglet.text.Label(str(self.world_data[self.layer][y][x][4]), font_size=15, x=x * 28 + 91, y=y* 28 + 1, width=28, color=(0,0,0,255)).draw() for x in range(30) for y in range(20)]
+        [pyglet.text.Label(str(self.world_data[self.layer][y][x][4]), font_size=15, x=x * 28 + 91, y=y* 28 + 1, width=28, color=(0,0,0,255)).draw() for x in range(6) for y in range(6)]
 
 
 if __name__ == '__main__':
