@@ -1,4 +1,5 @@
 from pyglet.gl import *
+from pyglet.window import key
 import math
 import numpy as np
 import time
@@ -35,6 +36,7 @@ class Window(pyglet.window.Window):
         self.draw_block_bg()
         self.draw_blocks()
         self.draw_text()
+
         #self.debug()
 
     def on_mouse_press(self, x, y, button, modifiers):
@@ -66,6 +68,14 @@ class Window(pyglet.window.Window):
     def on_key_press(self, symbol, modifiers):
         if 0x030 < symbol < 0x035:
             self.now_block = symbol-0x030  # key.py里面0对应值为0x030
+        elif symbol == key.S:
+            print("save")
+            self.save()
+        elif symbol == key.L:
+            print("load")
+            self.load()
+    
+             
 
     # ------------------------------------------------------
 
@@ -447,6 +457,17 @@ class Window(pyglet.window.Window):
                                        x=5, y=self.height - 50, width=88, anchor_x='left', anchor_y='top', multiline=True, color=(0,0,0,255))
         self.text.text = '1\n方块\n\n2\n红石\n\n3\n火把\n\n4\n中继器\n\n\n现在\n'+['方块', '红石', '火把', '中继器'][self.now_block-1]
         self.text.draw()
+
+
+    def save(self):
+        save_data = np.array([self.world_block, self.world_data])
+        np.save("world_data", save_data)
+
+    def load(self):
+        save_data = np.load("world_data.npy",allow_pickle=True).tolist()
+        self.world_block = save_data[0]
+        self.world_data = save_data[1]
+        
 
     def debug(self):
         print(self.world_data[0][1][0],self.world_data[1][1][0])
