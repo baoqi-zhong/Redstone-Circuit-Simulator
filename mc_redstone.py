@@ -3,6 +3,8 @@ from pyglet.window import key
 import math
 import numpy as np
 import time
+import os
+
 
 # blocks:(block_id)
 EMPTY = 0
@@ -69,10 +71,8 @@ class Window(pyglet.window.Window):
         if 0x030 < symbol < 0x035:
             self.now_block = symbol-0x030  # key.py里面0对应值为0x030
         elif symbol == key.S:
-            print("save")
             self.save()
         elif symbol == key.L:
-            print("load")
             self.load()
     
              
@@ -126,6 +126,7 @@ class Window(pyglet.window.Window):
         update_redstone_shape(x - 1, y, self.layer - 1)
 
     def update_redstone_energy(self):
+        # 要改 只更新影响的位置
         flag = False
         for layer in range(self.layer, self.layer+2):
             for y in range(20):
@@ -460,13 +461,24 @@ class Window(pyglet.window.Window):
 
 
     def save(self):
-        save_data = np.array([self.world_block, self.world_data])
-        np.save("world_data", save_data)
+        try:
+            save_data = np.array([self.world_block, self.world_data])
+            np.save("world_data", save_data)
+            print("success")
+        except:
+            print("加载失败文件损坏")
 
     def load(self):
-        save_data = np.load("world_data.npy",allow_pickle=True).tolist()
-        self.world_block = save_data[0]
-        self.world_data = save_data[1]
+        if os.path.exists("./world_data.npy"):
+            try:
+                save_data = np.load("world_data.npy",allow_pickle=True).tolist()
+                self.world_block = save_data[0]
+                self.world_data = save_data[1]
+                print("success")
+            except:
+                print("加载失败文件损坏")
+        else:
+            print("文件不存在")
         
 
     def debug(self):
